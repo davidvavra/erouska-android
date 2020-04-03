@@ -20,12 +20,12 @@ import cz.covid19cz.erouska.ext.execute
 import cz.covid19cz.erouska.ext.hexAsByteArray
 import cz.covid19cz.erouska.ext.hoursToMilis
 import cz.covid19cz.erouska.receiver.BtScanReceiver
-import cz.covid19cz.erouska.receiver.IOSScanReceiver
 import cz.covid19cz.erouska.utils.L
 import cz.covid19cz.erouska.utils.isBluetoothEnabled
 import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import no.nordicsemi.android.support.v18.scanner.*
+import no.nordicsemi.android.support.v18.scanner.ScanSettings.MATCH_MODE_STICKY
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.collections.HashMap
@@ -196,6 +196,7 @@ class BluetoothRepository(
             .setScanMode(AppConfig.scanMode)
             .setUseHardwareFilteringIfSupported(true)
             .setUseHardwareBatchingIfSupported(true)
+            .setMatchMode(MATCH_MODE_STICKY)
             .setReportDelay(10000)
             .build()
 
@@ -205,17 +206,18 @@ class BluetoothRepository(
             .setUseHardwareFilteringIfSupported(true)
             .setUseHardwareBatchingIfSupported(true)
             .setReportDelay(10000)
+            .setMatchMode(MATCH_MODE_STICKY)
             .build()
 
         val androidIntent = Intent(context, BtScanReceiver::class.java)
         androidIntent.action = BtScanReceiver.ACTION_ANDROID
         androidPendingIntent =
-            PendingIntent.getBroadcast(context, 0, androidIntent, PendingIntent.FLAG_CANCEL_CURRENT)
+            PendingIntent.getBroadcast(context, 1, androidIntent, PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val iosIntent = Intent(context, IOSScanReceiver::class.java)
+        val iosIntent = Intent(context, BtScanReceiver::class.java)
         iosIntent.action = BtScanReceiver.ACTION_IOS
         iosPendingIntent =
-            PendingIntent.getBroadcast(context, 0, iosIntent, PendingIntent.FLAG_CANCEL_CURRENT)
+            PendingIntent.getBroadcast(context, 2, iosIntent, PendingIntent.FLAG_UPDATE_CURRENT)
 
         BluetoothLeScannerCompat.getScanner().startScan(
             listOf(
@@ -280,7 +282,7 @@ class BluetoothRepository(
     private fun onScanResult(result: ScanResult) {
         result.scanRecord?.bytes?.let { bytes ->
             if (isServiceUUIDMatch(result) || canBeIosOnBackground(result.scanRecord)) {
-                val deviceId = getBuidFromAdvertising(bytes)
+                val deviceId = getBuidFromAdvertising(result.scanRecord!!.serviceData!![ParcelUuid(SERVICE_UUID)])
                 if (deviceId != null) {
                     // It's time to handle Android Device
                     handleAndroidDevice(result, deviceId)
@@ -384,37 +386,37 @@ class BluetoothRepository(
         connectToGatt()
     }
 
-    private fun getBuidFromAdvertising(bytes: ByteArray): String? {
+    private fun getBuidFromAdvertising(bytes: ByteArray?): String? {
         val result = ByteArray(10)
 
-        var currIndex = 0
-        var len = -1
-        var type: Byte
+//        var currIndex = 0
+//        var len = -1
+//        var type: Byte
+//
+//        while (currIndex < bytes.size && len != 0) {
+//            len = bytes[currIndex].toInt()
+//            type = bytes[currIndex + 1]
+//
+//            if (type == 0x21.toByte()) { //128 bit Service UUID (most cases)
+//                // +2 (skip lenght byte and type byte), +16 (skip 128 bit Service UUID)
+//                bytes.copyInto(result, 0, currIndex + 2 + 16, currIndex + 2 + 16 + 10)
+//                break
+//            } else if (type == 0x16.toByte()) { //16 bit Service UUID (rare cases)
+//                // +2 (skip lenght byte and type byte), +2 (skip 16 bit Service UUID)
+//                if (bytes.size > (currIndex + 2 + 2 + 10)) {
+//                    bytes.copyInto(result, 0, currIndex + 2 + 2, currIndex + 2 + 2 + 10)
+//                }
+//                break
+//            } else if (type == 0x20.toByte()) { //32 bit Service UUID (just in case)
+//                // +2 (skip lenght byte and type byte), +4 (skip 32 bit Service UUID)
+//                bytes.copyInto(result, 0, currIndex + 2 + 4, currIndex + 2 + 4 + 10)
+//                break
+//            } else {
+//                currIndex += len + 1
+//            }
+//        }
 
-        while (currIndex < bytes.size && len != 0) {
-            len = bytes[currIndex].toInt()
-            type = bytes[currIndex + 1]
-
-            if (type == 0x21.toByte()) { //128 bit Service UUID (most cases)
-                // +2 (skip lenght byte and type byte), +16 (skip 128 bit Service UUID)
-                bytes.copyInto(result, 0, currIndex + 2 + 16, currIndex + 2 + 16 + 10)
-                break
-            } else if (type == 0x16.toByte()) { //16 bit Service UUID (rare cases)
-                // +2 (skip lenght byte and type byte), +2 (skip 16 bit Service UUID)
-                if (bytes.size > (currIndex + 2 + 2 + 10)) {
-                    bytes.copyInto(result, 0, currIndex + 2 + 2, currIndex + 2 + 2 + 10)
-                }
-                break
-            } else if (type == 0x20.toByte()) { //32 bit Service UUID (just in case)
-                // +2 (skip lenght byte and type byte), +4 (skip 32 bit Service UUID)
-                bytes.copyInto(result, 0, currIndex + 2 + 4, currIndex + 2 + 4 + 10)
-                break
-            } else {
-                currIndex += len + 1
-            }
-        }
-
-        val resultHex = result.asHexLower
+        val resultHex = bytes?.asHexLower
 
         return if (resultHex != "00000000000000000000") resultHex else null
     }
@@ -464,6 +466,7 @@ class BluetoothRepository(
             .build()
 
         val scanData = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
             .addServiceData(parcelUuid, buid.hexAsByteArray).build()
 
         btManager.adapter?.bluetoothLeAdvertiser?.startAdvertising(
