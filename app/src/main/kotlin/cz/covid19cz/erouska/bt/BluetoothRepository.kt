@@ -197,7 +197,7 @@ class BluetoothRepository(
             .setUseHardwareFilteringIfSupported(true)
             .setUseHardwareBatchingIfSupported(true)
             .setMatchMode(MATCH_MODE_STICKY)
-            .setReportDelay(10000)
+            .setReportDelay(15000)
             .build()
 
         val iOSScannerSettings: ScanSettings = ScanSettings.Builder()
@@ -205,7 +205,7 @@ class BluetoothRepository(
             .setScanMode(AppConfig.scanMode)
             .setUseHardwareFilteringIfSupported(true)
             .setUseHardwareBatchingIfSupported(true)
-            .setReportDelay(10000)
+            .setReportDelay(15000)
             .setMatchMode(MATCH_MODE_STICKY)
             .build()
 
