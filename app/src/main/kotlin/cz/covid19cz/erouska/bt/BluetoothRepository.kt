@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.ParcelUuid
 import androidx.databinding.ObservableArrayList
 import cz.covid19cz.erouska.AppConfig
+import cz.covid19cz.erouska.bt.entity.ObservableScanSession
 import cz.covid19cz.erouska.bt.entity.ScanSession
 import cz.covid19cz.erouska.db.DatabaseRepository
 import cz.covid19cz.erouska.db.ScanDataEntity
@@ -255,24 +256,26 @@ class BluetoothRepository(
     private fun saveDataAndClearScanResults() {
         L.d("Saving data to database")
         Observable.just(scanResultsMap.values.toTypedArray())
-            .map { tempArray ->
-                for (item in tempArray) {
-                    item.calculate()
-                    val scanResult = ScanDataEntity(
-                        0,
-                        item.deviceId,
-                        item.timestampStart,
-                        item.timestampEnd,
-                        item.avgRssi,
-                        item.medRssi,
-                        item.rssiCount
-                    )
-                    L.d("Saving: $scanResult")
-
-                    db.add(scanResult)
-                }
+            .map {
+                it.map { scanSession -> scanSession.fold(1000 * 120) }.flatten()
+                    .forEach { item ->
+                        with (item) {
+                            calculate()
+                            val scanResult = ScanDataEntity(
+                                0,
+                                deviceId,
+                                timestampStart,
+                                timestampEnd,
+                                avgRssi,
+                                medRssi,
+                                rssiCount
+                            )
+                            L.d("Saving: $scanResult")
+                            db.add(scanResult)
+                        }
+                    }
                 dbCleanup()
-                tempArray.size
+                it.size
             }.execute({
                 L.d("$it records saved")
                 clearScanResults()
@@ -324,7 +327,7 @@ class BluetoothRepository(
 
     private fun handleAndroidDevice(result: ScanResult, deviceId: String) {
         if (!scanResultsMap.containsKey(deviceId)) {
-            val newEntity = ScanSession(deviceId, result.device.address)
+            val newEntity = ObservableScanSession(deviceId, result.device.address)
             newEntity.addRssi(result.rssi)
             scanResultsList.add(newEntity)
             scanResultsMap[deviceId] = newEntity
@@ -356,7 +359,7 @@ class BluetoothRepository(
 
     private fun getBuidFromGatt(result: ScanResult) {
         val mac = result.device.address
-        val session = ScanSession(mac = mac)
+        val session = ObservableScanSession(mac = mac)
         session.addRssi(result.rssi)
         discoveredIosDevices[mac] = session
         L.d("Enqueued for GATT discovery. Mac:$mac")

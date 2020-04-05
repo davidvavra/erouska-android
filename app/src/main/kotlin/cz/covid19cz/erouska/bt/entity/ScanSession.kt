@@ -5,14 +5,13 @@ import java.util.*
 import kotlin.collections.ArrayList
 
 
-class ScanSession(var deviceId: String = DEFAULT_BUID, val mac: String) {
+open class ScanSession(var deviceId: String = DEFAULT_BUID, val mac: String) {
 
     companion object{
         const val DEFAULT_BUID = "UNKNOWN"
     }
 
     private val rssiList = ArrayList<Rssi>()
-    val currRssi = SafeMutableLiveData(Int.MAX_VALUE)
 
     var avgRssi = 0
     var medRssi = 0
@@ -23,10 +22,12 @@ class ScanSession(var deviceId: String = DEFAULT_BUID, val mac: String) {
     val rssiCount: Int
         get() = rssiList.size
 
-    fun addRssi(rssiVal: Int) {
-        val rssi = Rssi(rssiVal)
+    open fun addRssi(rssiVal: Int) {
+        rssiList.add(Rssi(rssiVal))
+    }
+
+    private fun addRssi(rssi: Rssi) {
         rssiList.add(rssi)
-        currRssi.postValue(rssiVal)
     }
 
     fun calculate() {
@@ -59,5 +60,30 @@ class ScanSession(var deviceId: String = DEFAULT_BUID, val mac: String) {
         rssiList.clear()
         avgRssi = 0
         medRssi = 0
+    }
+
+    fun fold(interval: Long): List<ScanSession> {
+        return rssiList.toList().fold(mutableListOf()) { acc, item ->
+            acc.lastOrNull()?.apply {
+                if (item.timestamp - timestampStart < interval) {
+                    addRssi(item)
+                }
+            } ?: run {
+                ScanSession(deviceId, mac).apply {
+                    acc.add(this)
+                    addRssi(item)
+                }
+            }
+            acc
+        }
+    }
+}
+
+class ObservableScanSession(deviceId: String = DEFAULT_BUID, mac: String): ScanSession(deviceId, mac) {
+    val currRssi = SafeMutableLiveData(Int.MAX_VALUE)
+
+    override fun addRssi(rssiVal: Int) {
+        super.addRssi(rssiVal)
+        currRssi.postValue(rssiVal)
     }
 }
