@@ -1,47 +1,49 @@
 # eRouška
 
-## <a name="registrace"></a> Registrace zařízení
+## <a name="device_registration"></a> Device Registration
 
-1. Uživatel zadá telefonní číslo
-2. eRouška odešle telefonní číslo do [Firebase Authentication](https://firebase.google.com/docs/auth)
-3. Firebase pošle zpět autorizační SMS
-4. Uživatel autorizuje registraci zařízení opsáním kódu z SMS (na většině telefonů se kód ověří automaticky)
-5. Po úspěšné autorizaci eRouška dokončí registraci zařízení pro dané telefonní číslo a vytvoří aplikační uživatelský profil v [kolekce Users](#kolekce-users) a [kolekci Registrations](kolekce-registrations)
-	1. Profil vytvoří callable Firebase function “registerBuid”
-		1. Funkce dostane detail o mobilním zařízení jako platform, manufacturer atd. (diagnostika případných problémů s aplikací-bluetooth)
-		1. Funkce si vytáhne phoneNumber z identity uživatele via [Firebase Authentication](https://firebase.google.com/docs/auth)
-		1. Funkce vygeneruje [BUID](#buid) (10 znaků), pro každou registraci nové,  kontroluje kolize
-		1. Pokud bude už BUID pro jedno číslo moc (>50), přestaneme generovat jako obranu před DDOS 
-		1. Všechno zapíše do [kolekce Users](#kolekce-users) ve Firestore pod klíčem users/$[FUID](#fuid) a registrations/$BUID
-		1. eRouška si uloží [BUID](#buid) a seznam TUID z response funkce to se dále používá pro bluetooth viz detailní [popis](https://docs.google.com/document/d/1uNlHkx3oXWHktTd853gM2rZsv8O1BGzfVIYfvQAnLzo/edit#heading=h.javrvw19429x)
-
-
-## <a name="integrace_karantena"></a> Integrace Chytrá karanténa
-
-*   Epidemiolog požádá uživatele o souhlas a nahrání dat z eRouška
-*   Uživate, pokud souhlasí,l v Mobilní roušce klikne na tlačítko Nahrát data
-    1. Mobilní aplikace eRouška si pamatuje timestamp posledního úspěšného uploadu a další CSV obsahují jenom záznamy větší než timestamp posledního uploadu
-    2. CSV jde nahrát jenom jednou za 15 min (check na klientovi)
-    3. Soubor je uložen v Firebase Storage v kolekci [Proximity](#kolekce-proximity) (Uživatel je vlastníkem těchto dat)
-*   Keboola vytvoří v naplánovaném čase (jednou za 30m) v dedikovaném AWS S3 bucketu CSV soubor phones.csv obsahující telefoní čisla,
-*   
-*    Ve webovém rozhraní zadá, že chce zobrazit data pro dané telefonní číslo
-    4. Z Firestore se načte FUID podle telefonního čísla
-    5. Z Firebase Storage se načte BLOB pro daný FUID
-    6. Z blobu se vyčtou TUID lidí, které daný člověk potkal (po analýze z raw dat), načtou se z kolekce users telefonní čísla těchto uživatelů a příznak, jestli jsou nakažení a názvy zařízení
-    7. Epidemiolog kontaktuje potenciální nakažené
-*   Epidemiolog označí dané tel. číslo za nakažené
-    8. TODO: možnost zrušit tento příznak, uchovávat data, od kdy do kdy je člověk nakažený?
+1. App asks the user to enter the phone number.
+2. App sends the phone number to [Firebase Authentication](https://firebase.google.com/docs/auth).
+3. Firebase sents back SMS with authorisation token (authentication?).
+4. User authorises the device registration by entering the authorisation token from the SMS into the App (This is done automatically on most devices.)
+5. After a successful authorisation, the App finishes the registration of the phone number and creates an Application User Profile in [collection Users](#kolekce-users) and [collection Registrations](kolekce-registrations)
+	1. The profile creates a callable Firebase function **registerBuid**. The function performs the following:
+		1. Gets an access to device information (platform, brand/model, etc.) to enable debugging of possible **aplikace-bluetooth** issues.
+		1. Fetches the _phoneNumber_ with [Firebase Authentication](https://firebase.google.com/docs/auth)
+		1. Generates a unique [BUID](#buid) (10 characters, unique for each registration, checks for BUID collisions).
+		1. If the _phoneNumber_ has more than 50 [BUIDs](#buid) attached, the BUID generation is halted (DDoS prevention).
+		1. Everything is written under [collection Users](#kolekce-users) in Firestore under the keys _users/$[FUID](#fuid)_ and  _registrations/$[BUID](#buid)_
+		1. The app saves the [BUID](#buid) and a list of [TUIDs](#tuid) from the response function. This is used for Bluetooth application see [Details of BLE (Bluetooth Low Power)](https://docs.google.com/document/d/1uNlHkx3oXWHktTd853gM2rZsv8O1BGzfVIYfvQAnLzo/edit#heading=h.javrvw19429x)
 
 
-## Formát dat
+## <a name="integration-with-smart-quarantine"></a> Integration with Smart Quarantine (Chytrá karanténa)
+
+- An epidemiologist asks the user for the permission to use the data from eRouška and asks to upload the data.
+- User gives a permission by tapping "Upload data" in the eRouška.
+    1. eRouška remembers the timestamp of the last successful upload and the CSVs contain only the data collected after.
+    2. CSVs can be uploaded only once per 15 minutes (The timer runs on client app)
+    3. The file is saved in Firebase Storage in the collection [Proximity](#kolekce-proximity). The user owns the data.
+	
+- Every 30 minutes Keboola creates a _phones.csv_ file with phone numbers in a dedicated AWS S3 bucket.
+  
+  
+- Epidemiologist uses a web GUI to see a data for a particular phone number:
+    1. Z Firestore se načte FUID podle telefonního čísla
+    1. Z Firebase Storage se načte BLOB pro daný FUID
+    1. Z blobu se vyčtou TUID lidí, které daný člověk potkal (po analýze z raw dat), načtou se z collection Users telefonní čísla těchto uživatelů a příznak, jestli jsou nakažení a názvy zařízení
+    1. Epidemiolog kontaktuje potenciální nakažené
+	1. Epidemiolog označí dané tel. číslo za nakažené
+<!--    8. TODO: možnost zrušit tento příznak, uchovávat data, od kdy do kdy je člověk nakažený?
+-->
+
+## Data format
 
 
 ### Firebase Firestore
 
 
-#### <a name="kolekce-users"></a>Kolekce users
-*   Klíč: FUID
+#### <a name="kolekce-users"></a>collection Users
+*   Key: FUID
 *   Atributy:
 *   **phoneNumber** (telefonní číslo v mezinárodním formátu)
 *   createdAt (timestamp kdy byl uživatel vytvořen)
@@ -50,7 +52,7 @@
 
 #### <a name="kolekce-registrations"></a>Kolekce registrations
 
-*   Klíč: BUID
+*   Key: BUID
 *   Atributy
 *   fuid
 *   platform (android/ ios)
@@ -63,7 +65,7 @@
 
 
 #### <a name="kolekce-tuids"></a> Kolekce tuids
-*   Klíč: TUID
+*   Key: TUID
 *   Atributy
     *   fuid
     *   buid
@@ -73,8 +75,8 @@
 ### Firebase Storage
 
 #### <a name="kolekce-proximity"></a>Kolekce proximity
-    *   Klíč FUID/BUID
-        *   Název souboru $timestamp.csv
+    *   Key FUID/BUID
+        *   Filename $timestamp.csv
         *   Metadata
             *   version (verze CSV, aktuálně 3)
         *   Sloupečky CSV
@@ -214,7 +216,7 @@ Aktuální aplikace využívá  [Google Firebase Authentication](https://firebas
 
 [Firebase Storage](https://firebase.google.com/docs/storage) se používá  pro ukládání/upload _proximity dat_. Pak po aktivaci běží autentizace behind-the-scenes automagicky. Pro mobilní vývojáře dost zjednodušení, nulová práce pro backendisty - žádné handlování interakce mobil - server. Přístup je povolen danému uživateli na základě jeho [FUID](#bookmark=id.tee23py6y245) pouze na jeho kolekci dat.
 
-Na cloudovém storage [Firestore](https://firebase.google.com/docs/firestore), je [kolekce users](#kolekce-users) (metadata o uživatelích), přístupná pouze hygienikům/admin uživateli.
+Na cloudovém storage [Firestore](https://firebase.google.com/docs/firestore), je [collection Users](#kolekce-users) (metadata o uživatelích), přístupná pouze hygienikům/admin uživateli.
 
 
 ## Bluetooth
@@ -222,7 +224,7 @@ Na cloudovém storage [Firestore](https://firebase.google.com/docs/firestore), j
 Technické detaily ohledně BLE zde (zvolený přístup pro detekci “blízkých zařízení”): [Covid19 - eRouška - BLE](https://docs.google.com/document/d/1uNlHkx3oXWHktTd853gM2rZsv8O1BGzfVIYfvQAnLzo/edit?usp=sharing)
 
 
-## Zdrojové kódy
+## Source code
 
 *   Webová aplikace [https://github.com/covid19cz/bt-tracing-webapp/](https://github.com/covid19cz/bt-tracing-webapp/)
 *   Android [https://github.com/covid19cz/bt-tracing-android](https://github.com/covid19cz/bt-tracing-android)
@@ -230,12 +232,11 @@ Technické detaily ohledně BLE zde (zvolený přístup pro detekci “blízkýc
 *   Serverless funkce [https://github.com/covid19cz/erouska-firebase](https://github.com/covid19cz/erouska-firebase)
 
 
-## Terminologie
 
+## Glossary
 
 ### <a name="fuid"></a>FUID
-
-Firebase user id, jednoznačné user ID přiřazené Firebasem při aktivaci zařízení, aktuálně 28 ASCII znaků, ale může být i delší
+Firebase User ID, jednoznačné user ID přiřazené Firebasem při aktivaci zařízení, aktuálně 28 ASCII znaků, ale může být i delší
 
 **způsob vytvoření**: generuje Firebase
 
