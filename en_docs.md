@@ -6,35 +6,41 @@
 2. App sends the phone number to [Firebase Authentication](https://firebase.google.com/docs/auth).
 3. Firebase sents back SMS with authorisation token (authentication?).
 4. User authorises the device registration by entering the authorisation token from the SMS into the App (This is done automatically on most devices.)
-5. After a successful authorisation, the App finishes the registration of the phone number and creates an Application User Profile in [collection Users](#kolekce-users) and [collection Registrations](kolekce-registrations)
+5. After a successful authorisation, the App finishes the registration of the phone number and creates an Application User Profile in [Collection users](#kolekce-users) and [Collection registrations](kolekce-registrations)
 	1. The profile creates a callable Firebase function **registerBuid**. The function performs the following:
 		1. Gets an access to device information (platform, brand/model, etc.) to enable debugging of possible **aplikace-bluetooth** issues.
 		1. Fetches the _phoneNumber_ with [Firebase Authentication](https://firebase.google.com/docs/auth)
 		1. Generates a unique [BUID](#buid) (10 characters, unique for each registration, checks for BUID collisions).
 		1. If the _phoneNumber_ has more than 50 [BUIDs](#buid) attached, the BUID generation is halted (DDoS prevention).
-		1. Everything is written under [collection Users](#kolekce-users) in Firestore under the keys _users/$[FUID](#fuid)_ and  _registrations/$[BUID](#buid)_
+		1. Everything is written under [Collection users](#kolekce-users) in Firestore under the keys _users/$[FUID](#fuid)_ and  _registrations/$[BUID](#buid)_
 		1. The app saves the [BUID](#buid) and a list of [TUIDs](#tuid) from the response function. This is used for Bluetooth application see [Details of BLE (Bluetooth Low Power)](https://docs.google.com/document/d/1uNlHkx3oXWHktTd853gM2rZsv8O1BGzfVIYfvQAnLzo/edit#heading=h.javrvw19429x)
 
 
 ## <a name="integration-with-smart-quarantine"></a> Integration with Smart Quarantine (Chytrá karanténa)
 
 - An epidemiologist asks the user for the permission to use the data from eRouška and asks to upload the data.
-- User gives a permission by tapping "Upload data" in the eRouška.
+- User gives permission by tapping "Upload data" in the eRouška.
     1. eRouška remembers the timestamp of the last successful upload and the CSVs contain only the data collected after.
-    2. CSVs can be uploaded only once per 15 minutes (The timer runs on client app)
-    3. The file is saved in Firebase Storage in the collection [Proximity](#kolekce-proximity). The user owns the data.
+    2. CSVs can be uploaded only once per 15 minutes (The timer runs on client app.)
+    3. The file is saved in Firebase Storage in the [Collection proximity](#kolekce-proximity). The user owns the data.
 	
 - Every 30 minutes Keboola creates a _phones.csv_ file with phone numbers in a dedicated AWS S3 bucket.
   
   
 - Epidemiologist uses a web GUI to see a data for a particular phone number:
-    1. Z Firestore se načte FUID podle telefonního čísla
-    1. Z Firebase Storage se načte BLOB pro daný FUID
-    1. Z blobu se vyčtou TUID lidí, které daný člověk potkal (po analýze z raw dat), načtou se z collection Users telefonní čísla těchto uživatelů a příznak, jestli jsou nakažení a názvy zařízení
-    1. Epidemiolog kontaktuje potenciální nakažené
-	1. Epidemiolog označí dané tel. číslo za nakažené
+    1. Web app fetches a FUID related to the phone number.
+    1. A blob is loaded for the particular FUID from the Firebase Storage.
+    1. After the raw data is analysed, the TUIDs of people the person met are loaded from the blob, with:
+		- their respective phone numbers from the Collection _Users_
+		- a flag representing whether the person met is infected or not
+		- their respective device names
+    1. Epidemiologist contacts the possibly newly infected.
+	1. Epidemiologist marks the phone number as "infected".
+	<!-- ktore cislo? -->
 <!--    8. TODO: možnost zrušit tento příznak, uchovávat data, od kdy do kdy je člověk nakažený?
 -->
+
+<!-- preklad skoncil tu cca -->
 
 ## Data format
 
@@ -42,21 +48,21 @@
 ### Firebase Firestore
 
 
-#### <a name="kolekce-users"></a>collection Users
+#### <a name="kolekce-users"></a>Collection _Users_
 *   Key: FUID
-*   Atributy:
+*   Attributes:
 *   **phoneNumber** (telefonní číslo v mezinárodním formátu)
 *   createdAt (timestamp kdy byl uživatel vytvořen)
 *   registrationCount (počet registrací)
 
 
-#### <a name="kolekce-registrations"></a>Kolekce registrations
+#### <a name="kolekce-registrations"></a>Collection _Registrations_
 
 *   Key: BUID
-*   Atributy
+*   Attributes
 *   fuid
 *   platform (android/ ios)
-*   platformVersion (verze systému, např. 10.0.4)
+*   platformVersion (version systému, např. 10.0.4)
 *   manufacturer (výrobce telefonu, např. Samsung)
 *   model (model telefonu, např. Galaxy S7)
 *   locale (jazyk telefonu, např. cs_CZ)
@@ -64,9 +70,9 @@
 *   pushRegistrationToken (push token z Firebase Cloud Messaging)
 
 
-#### <a name="kolekce-tuids"></a> Kolekce tuids
+#### <a name="kolekce-tuids"></a> Collection _tuids_
 *   Key: TUID
-*   Atributy
+*   Attributes
     *   fuid
     *   buid
     *   createdAt (timestamp kdy bylo TUID vytvořeno)
@@ -74,11 +80,11 @@
 
 ### Firebase Storage
 
-#### <a name="kolekce-proximity"></a>Kolekce proximity
+#### <a name="kolekce-proximity"></a>Collection _proximity_
     *   Key FUID/BUID
         *   Filename $timestamp.csv
         *   Metadata
-            *   version (verze CSV, aktuálně 3)
+            *   version (version CSV, aktuálně 3)
         *   Sloupečky CSV
             *   tuid (20 znaků hex)
             *   timestampStart (millis)
@@ -128,86 +134,73 @@ Obsahuje konstanty, které jdou později měnit [bez updatu aplikace](https://fi
 
 Region pro funkce: europe-west1
 
-Pokud není uvedeno jinak, tak výstup i vstup funkcí jsou slovníky.
+Pokud není uvedeno jinak, tak výstup i input funkcí jsou slovníky.
 
 Pokud výstup není uveden, tak funkce nic nevrací (může ale vyhodit výjimku).
 
-
-
-*   registerBuid
-    *   Popis:
+*   **registerBuid**
+    *   Description:
         *   zaregistruje nové BUID pro současného uživatele
-    *   Vstup
+    *   Input
         *   platform: string (android/ ios)
-        *   platformVersion: string (verze systému, např. 10.0.4)
+        *   platformVersion: string (version systému, např. 10.0.4)
         *   manufacturer: string (výrobce telefonu, např. Samsung)
         *   model: string (model telefonu, např. Galaxy S7)
         *   locale: string (jazyk telefonu, např. cs_CZ)
         *   pushRegistrationToken: string (push token z Firebase Cloud Messaging)
-    *   Výstup
+    *   Output
         *   buid: string (vytvořené BUID)
         *   tuids: string[] (seznam TUID pro vysílání)
-*   deleteUploads
-    *   Popis:
+*   **deleteUploads**
+    *   Description:
         *   smaže nahraná CSV pro dané BUID
-    *   Vstup
+    *   Input
         *   buid: string (BUID, pro které se mají CSV smazat)
-*   deleteBuid
-    *   Popis:
+*   **deleteBuid**
+    *   Description:
         *   smaže BUID z databáze a všechna nahraná CSV pro dané BUID
-    *   Vstup
+    *   Input
         *   buid: string (BUID, které se má smazat)
-*   deleteUser
-    *   Popis:
+*   **deleteUser**
+    *   Description:
         *   smaže telefonní číslo, všechna BUID, všechna CSV i Firebase uživatele
-*   changePushToken
-    *   Popis:
+*   **changePushToken**
+    *   Description:
         *   změní push token pro dané BUID
-    *   Vstup
+    *   Input
         *   buid: string (BUID, pro které se má token změnit)
         *   pushRegistrationToken: string (nový push token)
-*   isBuidActive
-    *   Popis:
+*   **isBuidActive**
+    *   Description:
         *   zkontroluje, jestli je uživatelův účet (FUID) a zadané BUID aktivní
-    *   Vstup:
+    *   Input:
         *   buid: string (BUID, které se má zkontrolovat)
-    *   Výstup: boolean (aktivní/neaktivní)
+    *   Output: boolean (aktivní/neaktivní)
 
 
 
 ## Security
-
-
-### Role, interfacy, akce
-
+- Transport layer protocol uses HTTPS.
+### Roles, Interfaces, Actions
 |role|interface|akce|Protokol|Auth Provider|
 |:-:|:-:|:-:|:-:|:-:|
 |jakýkoliv uživatel|app|instalace, aktivace|SSL|Google auth pro aktivaci
 |infikovaný uživatel|app|upload|SSL|Google auth
 |Technicky uživatel (App server)| API call: frontend na Firestore|práce s daty dle FE/hygienik usecasů pod admin právy|SSL|Google auth
 
+### Mobile App
+#### Who can install the App?
 
-### Transport
+Everybody, with Google Play Store.
 
-Na transportní vrstvě se bude používat HTTPS.
-
-
-### Mobilní Aplikace
-
-
-#### Instalace Aplikace
-
-Kdokoliv. Zajišťuje playstore/appstore. Mimo naší kontrolu.
-
-
-#### Aktivace
+#### App Activation
 
 Po instalaci aplikace je potřeba zaručit, že s naším backendem komunikuje jen aktivovaná/ověřená instance aplikace (a ne nějaký hacker, který nám posílá randomní data).
 
 Aktivace musí spočívat v použití nezávislého kanálu (SMS, email), nemůžeme spoléhat jen na náš datový kanál, aby si hacker nemohl jednoduše naskriptovat vytvoření milionu uživatelů a pak to do nás prát. Tím se dostáváme od tématu aktivace k tématu autentizace.
 
 
-#### Aktivace, Autentizace, Autorizace
+#### Firebase - App Activation, Authentication and Authentication
 
 Aktuální aplikace využívá  [Google Firebase Authentication](https://firebase.google.com/docs/auth) . Tato služba zajistí aktivaci/ověření aplikace a telefonního čísla přes další kanál (SMS). Při komunikaci s dalšími Firebase službami máme automaticky ověřeného uživatele. Security rules zajišťují, že uživatel může přistupovat jenom ke svým datům.
 
@@ -226,7 +219,7 @@ Technické detaily ohledně BLE zde (zvolený přístup pro detekci “blízkýc
 
 ## Source code
 
-*   Webová aplikace [https://github.com/covid19cz/bt-tracing-webapp/](https://github.com/covid19cz/bt-tracing-webapp/)
+*   Web application [https://github.com/covid19cz/bt-tracing-webapp/](https://github.com/covid19cz/bt-tracing-webapp/)
 *   Android [https://github.com/covid19cz/bt-tracing-android](https://github.com/covid19cz/bt-tracing-android)
 *   iOS [https://github.com/covid19cz/bt-tracing-ios](https://github.com/covid19cz/bt-tracing-ios)
 *   Serverless funkce [https://github.com/covid19cz/erouska-firebase](https://github.com/covid19cz/erouska-firebase)
@@ -243,7 +236,7 @@ Firebase User ID, jednoznačné user ID přiřazené Firebasem při aktivaci za�
 
 ### <a name="buid"></a>BUID
 
-Broadcasted user ID, ID registrace zařízení, délka: 10 bytů
+Broadcasted user ID, ID registrace zařízení, lenght: 10 bytů
 
 **způsob vytvoření**: generuje server (callable Firebase functions)
 
